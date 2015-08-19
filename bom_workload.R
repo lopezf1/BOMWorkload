@@ -1,29 +1,69 @@
+setwd("~/RProgramming/BOMWorkload")
+
 library(dplyr)
 library(tidyr)
 library(xlsx)
 library(ggplot2)
+library(lubridate)
 
 # Make sure file is saved a comma separate value file.
 df <- read.csv("Cascade (Polak 05192015 raw data) Incoming SRWR Volumes and Revenues with Resubmit Reasons.csv",
                header=TRUE, sep=",")
 employee <- read.xlsx("employee_region.xlsx", 1, header=TRUE)
 headcount <- read.xlsx("production_hc.xlsx", 1, header=TRUE)
-headCountReg <- filter(headcount, !Region=="Total")
-headCountTotal <- filter(headcount, Region=="Total")
+headCountReg <- filter(headcount, !Region=="Total") #Huh?????
+headCountTotal <- filter(headcount, Region=="Total") #Huh????
 
 # Get ride of unnecessary variables and rename columns.
-dfReduced <- select(df, c(1,2,16,17,19,25,27,44,46))
-names(dfReduced) <- c("Date", "ID", "Resubmit", "Audit", "Lead",
-                "Account", "TOV", "Owner", "Indicator")
-dfReduced <- merge(dfReduced, employee, by.x="Owner", by.y="Name")
+dfReduced <- select(df, c(2, 13, 16,17,19,25,27,44,46))
+names(dfReduced) <- c("ID", "Date", "Resubmit", "Audit", "Lead",
+                "Account", "TOV", "BOM", "Indicator")
+
+dfReduced <- dfReduced %>%
+  merge(employee, by.x="BOM", by.y="Name") %>%
+  separate(col="BOM", into=c("BOM", "first1"), sep=",") %>%
+  separate(col="Lead", into=c("Lead", "first2"), sep=",") %>%
+  select(-c(first1, first2))
+
+dfReduced$newDate <- dfReduced$Date %>%
+  strptime(format=("%m/%d/%Y %H:%M")) %>%
+  format("%y-%m") %>%
+  as.factor()
+
 rm(df)
+
+
+table(BOM, "1-Net New (Initial Request)")
+#subj is "1-Net New (Initial Request)"
+
+table <- function(sub, reason) {
+  temp <- dfReduced %>% 
+    filter(Resubmit==reason) %>% 
+    group_by(sub, newDate) %>% 
+    summarize(count=n()) %>% 
+    spread(newDate, count) %>%
+    as.data.frame()
+  
+  rownames(temp) <- temp[,1] # Create row.names
+  temp[,1] <- NULL
+  
+  temp$Total <- rowSums(temp, na.rm=TRUE)
+  monthTotals <- colSums(temp, na.rm=TRUE)
+  
+  report <- rbind(temp, monthTotals)
+  
+  len <- length(rownames(report)) # Fix row name
+  rownames(report)[len] <- "GrandTotal"
+  
+  View(report) 
+}
 
 # Create BOM report for Resubmit Reason = Net New.
 tempNetNew <- dfReduced %>% 
   filter(Resubmit=="1-Net New (Initial Request)") %>% 
-  group_by(Owner, Date) %>% 
+  group_by(BOM, newDate) %>% 
   summarize(count=n()) %>% 
-  spread(Date, count) %>%
+  spread(newDate, count) %>%
   as.data.frame()
 
 rownames(tempNetNew) <- tempNetNew[,1] # Create row.names
@@ -39,11 +79,11 @@ rownames(reportNetNew)[len] <- "GrandTotal"
 
 View(reportNetNew)
 
-# # Create BOM report for Resubmit Reason = All
+# Create BOM report for all Resubmit Reasons.
 tempAll <- dfReduced %>% 
-  group_by(Owner, Date) %>%
-  summarize(count=n()) %>%
-  spread(Date, count) %>%
+  group_by(BOM, newDate) %>% 
+  summarize(count=n()) %>% 
+  spread(newDate, count) %>%
   as.data.frame()
 
 rownames(tempAll) <- tempAll[,1] # Create row.names
@@ -59,22 +99,21 @@ rownames(reportAll)[len] <- "GrandTotal"
 
 View(reportAll)
 
-# Write report results to single leader file.
-write.xlsx(reportNetNew, file="polak_workload.xlsx", sheetName="NetNew")
-write.xlsx(reportAll, file="polak_workload.xlsx", sheetName="All", append=TRUE)
+
+
 
 # Create Regional report for Resubmit Reason = Net New
 tempRegNetNew <- dfReduced %>% 
   filter(Resubmit=="1-Net New (Initial Request)") %>% 
-  group_by(Region, Date) %>% 
+  group_by(Region, newDate) %>% 
   summarize(count=n()) %>% 
-  spread(Date, count) %>%
+  spread(newDate, count) %>%
   as.data.frame()
 
 rownames(tempRegNetNew) <- tempRegNetNew[,1] # Create row.names
 tempRegNetNew[,1] <- NULL
 
-tempRegNetNew$bomTotal <- rowSums(tempRegNetNew, na.rm=TRUE)
+tempRegNetNew$regTotal <- rowSums(tempRegNetNew, na.rm=TRUE)
 monthTotals <- colSums(tempRegNetNew, na.rm=TRUE)
 
 reportRegNetNew <- rbind(tempRegNetNew, monthTotals)
@@ -84,17 +123,19 @@ rownames(reportRegNetNew)[len] <- "GrandTotal"
 
 View(reportRegNetNew)
 
-# Create Regional report for Resubmit Reason = All
+
+# Create Regional report for All Resubmit Reasons.
+
 tempRegAll <- dfReduced %>% 
-  group_by(Region, Date) %>% 
+  group_by(Region, newDate) %>% 
   summarize(count=n()) %>% 
-  spread(Date, count) %>%
+  spread(newDate, count) %>%
   as.data.frame()
 
 rownames(tempRegAll) <- tempRegAll[,1] # Create row.names
 tempRegAll[,1] <- NULL
 
-tempRegAll$bomTotal <- rowSums(tempRegAll, na.rm=TRUE)
+tempRegAll$regTotal <- rowSums(tempRegAll, na.rm=TRUE)
 monthTotals <- colSums(tempRegAll, na.rm=TRUE)
 
 reportRegAll <- rbind(tempRegAll, monthTotals)
@@ -104,13 +145,8 @@ rownames(reportRegAll)[len] <- "GrandTotal"
 
 View(reportRegAll)
 
-# Write report results to single leader file.
-write.xlsx(reportRegNetNew, file="polak_workload.xlsx",
-           sheetName="RegNetNew", append=TRUE)
-write.xlsx(reportRegAll, file="polak_workload.xlsx",
-           sheetName="RegAll", append=TRUE)
 
-# Determine workload per month
+# WORKLOAD PER MONTH
 
 tempPerReg <- dfReduced %>% 
     group_by(Region, Date) %>% 
@@ -124,25 +160,20 @@ tempPerReg <- dfReduced %>%
 rownames(tempPerReg) <- tempPerReg[,1] # Create row.names
 tempPerReg[,1] <- NULL
 
-#TESTING STARTING HERE
-tempPerAll <- dfReduced %>%
-    group_by(Region, Date) %>% 
-    summarize(count=n()) %>% 
-    as.data.frame() %>%
-    spread(Date, count)
+#TEST how to plot
 
-rownames(tempPerAll) <- tempPerAll[,1] # Create row.names
-tempPerAll[,1] <- NULL
-
-monthTotals <- colSums(tempPerAll, na.rm=TRUE) %>%
-  cbind(hc=headCountTotal$HeadCount)
-colnames(monthTotals) <- c("total", "hc")
-monthTotals <- as.data.frame(monthTotals)
-monthTotals <- mutate(monthTotals, load=total/hc)
-
-View(monthTotals)
+test <- dfReduced %>% 
+  filter(Resubmit=="1-Net New (Initial Request)" &
+           Lead=="MASSEY" | Lead=="LOPEZ") %>% 
+  group_by(Lead, newDate) %>% 
+  summarize(count=n())
 
 
-
-
+g <- ggplot(test, aes(newDate, count))
+g + geom_bar(stat="identity", aes(fill=Lead)) +
+  geom_text(aes(label=count), size=3,
+            hjust=0.5, vjust=3, position="stack") +
+  ggtitle("New New Volumes by Lead") +
+  ylab("Net New SR/WR Count") +
+  xlab("YY-MM")
 
