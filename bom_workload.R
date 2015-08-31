@@ -1,13 +1,12 @@
-setwd("~/RProgramming/BOMWorkload")
+#setwd("~/RProgramming/BOMWorkload")
 
 library(dplyr)
 library(tidyr)
 library(xlsx)
 library(ggplot2)
-library(lubridate)
 
 # Make sure file is saved a comma separate value file.
-df <- read.csv("Cascade (Polak 05192015 raw data) Incoming SRWR Volumes and Revenues with Resubmit Reasons.csv",
+df <- read.csv("E-CASCADE - Incoming Volumes with Revenue and Resubmit Reasons.csv",
                header=TRUE, sep=",")
 employee <- read.xlsx("employee_region.xlsx", 1, header=TRUE)
 headcount <- read.xlsx("production_hc.xlsx", 1, header=TRUE)
@@ -31,32 +30,6 @@ dfReduced$newDate <- dfReduced$Date %>%
   as.factor()
 
 rm(df)
-
-
-table(BOM, "1-Net New (Initial Request)")
-#subj is "1-Net New (Initial Request)"
-
-table <- function(sub, reason) {
-  temp <- dfReduced %>% 
-    filter(Resubmit==reason) %>% 
-    group_by(sub, newDate) %>% 
-    summarize(count=n()) %>% 
-    spread(newDate, count) %>%
-    as.data.frame()
-  
-  rownames(temp) <- temp[,1] # Create row.names
-  temp[,1] <- NULL
-  
-  temp$Total <- rowSums(temp, na.rm=TRUE)
-  monthTotals <- colSums(temp, na.rm=TRUE)
-  
-  report <- rbind(temp, monthTotals)
-  
-  len <- length(rownames(report)) # Fix row name
-  rownames(report)[len] <- "GrandTotal"
-  
-  View(report) 
-}
 
 # Create BOM report for Resubmit Reason = Net New.
 tempNetNew <- dfReduced %>% 
@@ -98,8 +71,6 @@ len <- length(rownames(reportAll)) # Fix row name
 rownames(reportAll)[len] <- "GrandTotal"
 
 View(reportAll)
-
-
 
 
 # Create Regional report for Resubmit Reason = Net New
@@ -160,7 +131,7 @@ tempPerReg <- dfReduced %>%
 rownames(tempPerReg) <- tempPerReg[,1] # Create row.names
 tempPerReg[,1] <- NULL
 
-#TEST how to plot
+#PLOTTING: LOPEZ V MASSEY NET NEW
 
 test <- dfReduced %>% 
   filter(Resubmit=="1-Net New (Initial Request)" &
@@ -177,3 +148,36 @@ g + geom_bar(stat="identity", aes(fill=Lead)) +
   ylab("Net New SR/WR Count") +
   xlab("YY-MM")
 
+p <- ggplot(test, aes(newDate, count, color=Lead))
+p + geom_line(aes(group=Lead)) +
+    geom_point() +
+    ggtitle("New New Volumes by Lead") +
+    ylab("Net New SR/WR Count") +
+    xlab("YY-MM")
+
+# PLOTTING LOPEZ V MASSEY TOTAL
+
+test2 <- dfReduced %>% 
+    filter(Lead=="MASSEY" | Lead=="LOPEZ") %>% 
+    group_by(Lead, newDate) %>% 
+    summarize(count=n())
+
+p <- ggplot(test2, aes(newDate, count, color=Lead))
+p + geom_line(aes(group=Lead)) +
+    geom_point() +
+    ggtitle("Total Volumes by Lead") +
+    ylab("Total SR/WR") +
+    xlab("YY-MM")
+
+# PLOTTING POLAK TOTAL VOLUMES
+ 
+test3 <- dfReduced %>% 
+    group_by(newDate) %>% 
+    summarize(count=n())
+
+p <- ggplot(test3, aes(newDate, count, color="red"))
+p + geom_line(aes(group=1)) +
+    geom_point() +
+    ggtitle("Polak Total Volumes") +
+    ylab("Total SR/WR") +
+    xlab("YY-MM")
